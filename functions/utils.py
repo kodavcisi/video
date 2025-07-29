@@ -154,3 +154,20 @@ async def handle_upload(app, file_path, message, msg, temp_dir):
         # Geçici thumbnail'i temizle (kalıcı değilse)
         if thumb != persistent_thumb and os.path.exists(thumb):
             os.remove(thumb)
+# --- Video Silme Fonksiyonu ---
+
+async def delete_video(file_path):
+    """
+    Belirtilen video dosyasını siler.
+    """
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"{file_path} başarıyla silindi.")
+            return True
+        else:
+            print(f"{file_path} bulunamadı.")
+            return False
+    except Exception as e:
+        print(f"Dosya silinirken hata oluştu: {e}")
+        return False
