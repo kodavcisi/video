@@ -8,20 +8,19 @@ from functions.progress import progress_for_pyrogram
 from pyrogram.errors import FloodWait, MessageNotModified, MessageIdInvalid
 from config import quee, PRE_LOG, SUDO_USERS, userbot
 
+
 async def on_task_complete(app, message: Message):
-    if quee:
-        del quee[0]
-    if quee:
+    del quee[0]
+    if len(quee) > 0:
         await add_task(app, quee[0])
 
+
 async def add_task(app, message: Message):
-    download_dir = None
     try:
         user_id = str(message.from_user.id)
         c_time = time.time()
-        random_id = str(int(c_time))
-        
-        # Dosya adını belirle
+        random = str(c_time)
+
         if message.video:
             file_name = message.video.file_name
         elif message.document:
@@ -29,128 +28,141 @@ async def add_task(app, message: Message):
         elif message.audio:
             file_name = message.audio.file_name
         else:
-            file_name = f"file_{user_id}_{random_id}"
-        
-        # Mesajı yanıtla
+            file_name = None
+
+        if file_name is None:
+            file_name = user_id
+
         msg = await message.reply_text(
-            "`🟡 Video İşleme Alındı... 🟡\n\n⚙ Motor: Pyrogram\n\n#indirme`", 
+            "`💡 Video İşleme Alındı... 💡\n\n⚙ Motor: Pyrogram\n\n#indirme`",
             quote=True
         )
-        
-        # İndirme dizinini oluştur
-        download_dir = os.path.join(DOWNLOAD_DIR, user_id, random_id)
-        os.makedirs(download_dir, exist_ok=True)
-        file_path = os.path.join(download_dir, file_name)
-        
-        # Dosyayı indir
-        file_path = await message.download(
-            file_name=file_path,
+
+        path = os.path.join(DOWNLOAD_DIR, user_id, random, file_name)
+
+        filepath = await message.download(
+            file_name=path,
             progress=progress_for_pyrogram,
-            progress_args=("`📥 İndiriliyor...`", msg, c_time)
+            progress_args=("`İndiriliyor...`", msg, c_time)
         )
-        
-        # Kodlama işlemi
-        await msg.edit("`🟣 Video Kodlanıyor... 🟣\n\n⚙ Motor: FFMPEG\n\n#kodlama`")
-        encoded_file = await encode(file_path, download_dir)  # Encode çıktısı aynı dizine
-        
-        if not encoded_file:
-            await msg.edit_text("<code>❌ Dosya kodlanırken hata oluştu!</code>")
-            return
-            
-        # Yükleme işlemi
-        await msg.edit("`🟢 Video Kodlandı, Veriler Alınıyor... 🟢`")
-        await handle_upload(app, encoded_file, message, msg, download_dir)
-        await msg.edit_text("`✅ Başarıyla Tamamlandı!`")
-        
+
+        await msg.edit("`🚧 Video Kodlanıyor... 🚧\n\n⚙ Motor: FFMPEG\n\n#kodlama`")
+
+        new_file = await encode(filepath)
+
+        if new_file:
+            await msg.edit("`📥 Video Kodlandı, Veriler Alınıyor... 📥`")
+            await handle_upload(app, new_file, message, msg, random)
+            await msg.edit_text("`Başarıyla Tamamlandı!`")
+        else:
+            await message.reply_text("<code>Dosyanızı kodlarken bir şeyler ters gitti.</code>")
+            os.remove(filepath)
+
     except MessageNotModified:
         pass
     except MessageIdInvalid:
-        await msg.edit_text('❌ İndirme İptal Edildi!')
+        await msg.edit_text("İndirme İptal!")
     except FloodWait as e:
-        print(f"⏳ FloodWait beklemesi: {e.value}s")
+        print(f"Sleep of {e.value} required by FloodWait ...")
         time.sleep(e.value)
     except Exception as e:
-        error_msg = f"<code>❌ Kritik Hata: {str(e)}</code>"
-        await msg.edit_text(error_msg)
-        print(error_msg)
-    finally:
-        # Tüm geçici dosyaları temizle
-        if download_dir and os.path.exists(download_dir):
-            shutil.rmtree(download_dir, ignore_errors=True)
-        await on_task_complete(app, message)
+        await msg.edit_text(f"<code>{e}</code>")
 
-async def handle_upload(app, file_path, message, msg, temp_dir):
-    try:
-        user_id = str(message.from_user.id)
-        c_time = time.time()
-        
-        # Kalıcı thumbnail yolu
-        persistent_thumb = os.path.join(DOWNLOAD_DIR, user_id, f"{user_id}.jpg")
-        
-        # Medya meta verileri
-        duration = get_duration(file_path)
-        width, height = get_width_height(file_path)
-        file_name = os.path.basename(file_path)
-        file_size = os.path.getsize(file_path)
-        audio_codec = get_codec(file_path, channel='a:0')
-        
-        # Thumbnail oluştur (kalıcı yoksa)
-        if os.path.exists(persistent_thumb):
-            thumb = persistent_thumb
-        else:
-            thumb = get_thumbnail(file_path, temp_dir, duration / 4)
-        
-        # Başlık oluştur
-        caption = message.caption or f"<code>{file_name}</code>"
-        
-        # 2GB üstü dosyalar için özel işlem
-        if file_size > 2_000_000_000:  # 2GB
-            await app.send_message(PRE_LOG, "⚠️ 2GB+ video yükleniyor...")
-            
-            # Userbot ile log kanalına yükle
-            video_msg = await userbot.send_video(
-                chat_id=PRE_LOG,
-                video=file_path,
+    await on_task_complete(app, message)
+
+
+async def handle_upload(app, new_file, message, msg, random):
+    user_id = str(message.from_user.id)
+    path = os.path.join(DOWNLOAD_DIR, user_id, random)
+    thumb_image_path = os.path.join(DOWNLOAD_DIR, user_id, user_id + ".jpg")
+
+    # Variables
+    c_time = time.time()
+    filename = os.path.basename(new_file)
+    duration = get_duration(new_file)
+    width, height = get_width_height(new_file)
+
+    if os.path.exists(thumb_image_path):
+        thumb = thumb_image_path
+    else:
+        thumb = get_thumbnail(new_file, path, duration / 4)
+
+    audio_codec = get_codec(new_file, channel="a:0")
+
+    caption_str = f"<code>{filename}</code>"
+
+    caption = message.caption if message.caption is not None else caption_str
+
+    # Upload
+    get_chat = await app.get_chat(chat_id=PRE_LOG)
+    print(get_chat)
+
+    file_size = os.stat(new_file).st_size
+    if file_size > 2093796556:  # 2 GB
+        try:
+            await app.send_message(PRE_LOG, "2 GB üstü video geliyor..")
+            video = await userbot.send_video(
+                PRE_LOG,
+                new_file,
+                supports_streaming=True,
                 caption=caption,
                 thumb=thumb,
                 duration=duration,
                 width=width,
                 height=height,
-                supports_streaming=True,
                 progress=progress_for_pyrogram,
-                progress_args=("`🌐 Log Kanalına Yükleniyor...`", msg, c_time)
+                progress_args=("`Yükleniyor...`", msg, c_time)
             )
-            
-            # Kullanıcıya forwardla
             await app.copy_message(
-                chat_id=message.chat.id,
+                chat_id=user_id,
                 from_chat_id=PRE_LOG,
-                message_id=video_msg.id
+                message_id=video.id
             )
-        else:
-            # Doğrudan kullanıcıya yükle
-            await app.send_video(
-                chat_id=message.chat.id,
-                video=file_path,
+            if not audio_codec:
+                await video.reply_text(
+                    "`⚠ Bu videonun sesi yoktu ama yine de kodladım.\n\n#bilgilendirme`",
+                    quote=True
+                )
+        except FloodWait as e:
+            print(f"Sleep of {e.value} required by FloodWait ...")
+            time.sleep(e.value)
+        except MessageNotModified:
+            pass
+        try:
+            shutil.rmtree(path)
+            if thumb_image_path is None:
+                os.remove(thumb)
+        except:
+            pass
+    else:
+        try:
+            video = await app.send_video(
+                user_id,
+                new_file,
+                supports_streaming=True,
                 caption=caption,
                 thumb=thumb,
                 duration=duration,
                 width=width,
                 height=height,
-                supports_streaming=True,
                 progress=progress_for_pyrogram,
-                progress_args=("`📤 Yükleniyor...`", msg, c_time)
+                progress_args=("`Yükleniyor...`", msg, c_time)
             )
-        
-        # Ses kontrolü uyarısı
-        if not audio_codec:
-            await message.reply("`🔇 Ses bulunamadı, video sessiz kodlandı.\n\n#bilgilendirme`")
-            
-    except Exception as upload_error:
-        error_msg = f"<code>❌ Yükleme Hatası: {str(upload_error)}</code>"
-        await msg.edit_text(error_msg)
-        print(error_msg)
-    finally:
-        # Geçici thumbnail'i temizle (kalıcı değilse)
-        if thumb != persistent_thumb and os.path.exists(thumb):
-            os.remove(thumb)
+            if not audio_codec:
+                await video.reply_text(
+                    "`⚠ Bu videonun sesi yoktu ama yine de kodladım.\n\n#bilgilendirme`",
+                    quote=True
+                )
+        except FloodWait as e:
+            print(f"Sleep of {e.value} required by FloodWait ...")
+            time.sleep(e.value)
+        except MessageNotModified:
+            pass
+        try:
+            shutil.rmtree(path)
+            if thumb_image_path is None:
+                os.remove(thumb)
+            os.remove(filepath)
+            os.remove(new_file)
+        except:
+            pass
