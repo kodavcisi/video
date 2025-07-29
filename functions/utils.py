@@ -154,20 +154,37 @@ async def handle_upload(app, file_path, message, msg, temp_dir):
         # Geçici thumbnail'i temizle (kalıcı değilse)
         if thumb != persistent_thumb and os.path.exists(thumb):
             os.remove(thumb)
-# --- Video Silme Fonksiyonu ---
+import os
 
-async def delete_video(file_path):
+# --- Dönüştürülen Dosya Silme Fonksiyonu ---
+
+async def delete_converted_and_original(file_path, converted_extensions=None):
     """
-    Belirtilen video dosyasını siler.
+    Orijinal ve dönüştürülmüş dosyaları siler.
+    :param file_path: Orijinal dosyanın tam yolu (örn: /klasor/video.avi)
+    :param converted_extensions: Silinmesi istenen ek dönüştürülmüş uzantılar listesi (örn: ['mp4', 'webm'])
     """
+    if converted_extensions is None:
+        converted_extensions = ['mp4', 'webm']
+    # Orijinal dosyayı sil
     try:
         if os.path.exists(file_path):
             os.remove(file_path)
             print(f"{file_path} başarıyla silindi.")
-            return True
         else:
             print(f"{file_path} bulunamadı.")
-            return False
     except Exception as e:
-        print(f"Dosya silinirken hata oluştu: {e}")
-        return False
+        print(f"Orijinal dosya silinirken hata oluştu: {e}")
+
+    # Dönüştürülmüş dosyaları sil
+    base, _ = os.path.splitext(file_path)
+    for ext in converted_extensions:
+        converted_path = f"{base}.{ext}"
+        try:
+            if os.path.exists(converted_path):
+                os.remove(converted_path)
+                print(f"{converted_path} başarıyla silindi.")
+            else:
+                print(f"{converted_path} bulunamadı.")
+        except Exception as e:
+            print(f"{converted_path} silinirken hata oluştu: {e}")
