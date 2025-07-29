@@ -51,7 +51,7 @@ async def add_task(app, message: Message):
         
         # Kodlama işlemi
         await msg.edit("`🟣 Video Kodlanıyor... 🟣\n\n⚙ Motor: FFMPEG\n\n#kodlama`")
-        encoded_file = await encode(file_path, download_dir)  # Encode çıktısı aynı dizine
+        encoded_file = await encode(file_path)  # Encode çıktısı aynı dizine
         
         if not encoded_file:
             await msg.edit_text("<code>❌ Dosya kodlanırken hata oluştu!</code>")
